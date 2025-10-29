@@ -13,7 +13,7 @@ struct SavePartSheetView: View {
     // 用於編輯的狀態變數
     @State private var name: String
     @State private var spec: String
-    @State private var quantity: Int = 1
+    @State private var quantity: Int
     @State private var function: String // <-- 新增狀態
 
     // 表單驗證
@@ -22,7 +22,7 @@ struct SavePartSheetView: View {
     }
 
      // 初始化器，用於將傳入值設定給 @State 變數
-     init(name: String, spec: String, function: String, onSave: @escaping (String, String, Int, String) -> Void) {
+     init(name: String, spec: String, function: String, initialQuantity: Int = 1, onSave: @escaping (String, String, Int, String) -> Void) {
          self.initialName = name
          self.initialSpec = spec
          self.initialFunction = function
@@ -31,6 +31,7 @@ struct SavePartSheetView: View {
          _name = State(initialValue: name)
          _spec = State(initialValue: spec)
          _function = State(initialValue: function)
+         _quantity = State(initialValue: max(1, initialQuantity))
      }
 
 

@@ -6,6 +6,8 @@ import Combine
 // 繼承 NSObject 以便遵從 AVCapturePhotoCaptureDelegate
 class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
 
+    static let defaultResultText = "將電子零件放置於下方框內，然後點擊「辨識零件」按鈕。"
+
     // MARK: - AVFoundation 屬性
     @Published var session = AVCaptureSession()
     private var photoOutput = AVCapturePhotoOutput()
@@ -26,7 +28,7 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
 
     // MARK: - @Published 狀態 (用於驅動 SwiftUI 更新)
     @Published var isLoading: Bool = false
-    @Published var resultText: String = "將電子零件放置於下方框內，然後點擊「辨識零件」按鈕。"
+    @Published var resultText: String = CameraManager.defaultResultText
     @Published var errorAlert: ErrorAlert? // 用於彈出式錯誤
     // --- *** 新增：加入 isSessionRunning 狀態 *** ---
     @Published var isSessionRunning: Bool = false // 追蹤相機預覽是否運作
@@ -106,6 +108,14 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
              DispatchQueue.main.async {
                 self.isSessionRunning = false
              }
+        }
+    }
+
+    func resetScanState() {
+        DispatchQueue.main.async {
+            self.resultText = CameraManager.defaultResultText
+            self.errorAlert = nil
+            self.isLoading = false
         }
     }
 

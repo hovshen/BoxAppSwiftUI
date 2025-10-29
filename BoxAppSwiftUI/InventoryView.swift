@@ -2,41 +2,113 @@ import SwiftUI
 
 struct InventoryView: View {
     @EnvironmentObject var viewModel: InventoryViewModel
+    @Binding var selectedTab: Tab
+
+    @State private var showingAIScanner = false
+    @State private var presentedSheet: InventorySheet?
+
+    @StateObject private var aiCameraManager = CameraManager()
     @Binding var selectedTab: Tab // <-- *** 接收 selectedTab 綁定 ***
     @State private var showingAddSheet = false // 控制手動新增表單
     @State private var showingRecognition = false
     @StateObject private var recognitionManager = CameraManager()
 
     var body: some View {
-        NavigationView {
-            List {
-                if viewModel.items.isEmpty {
-                    Text("您的庫存目前是空的。\n請點擊右上角的 '+' 新增零件，\n或前往「零件辨識」分頁掃描。")
-                        .foregroundColor(.gray)
-                        .multilineTextAlignment(.center)
-                        .padding()
-                } else {
-                    ForEach(viewModel.items) { item in
-                        NavigationLink(destination: PartDetailView(itemId: item.id)) {
-                            // --- *** 修改列表顯示格式 *** ---
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text("1. 零件名稱: \(item.name)").font(.headline)
-                                Text("2. 數量: \(item.quantity)")
-                                Text("3. 規格: \(item.spec)").font(.subheadline).foregroundColor(.gray)
-                                Text("4. 功能: \(item.function)").font(.caption).foregroundColor(.secondary) // 使用小字體顯示功能
-                            }
-                            .padding(.vertical, 5) // 增加垂直間距
-                            // --- *** 修改結束 *** ---
-                        }
-                    }
-                    .onDelete(perform: deleteItems)
+        NavigationStack {
+            listContent
+                .animation(.easeInOut, value: showingAIScanner)
+                .listStyle(.insetGrouped)
+                .navigationTitle("我的庫存")
+                .toolbar { toolbarContent }
+                .sheet(item: $presentedSheet) { destination in
+                    sheet(for: destination)
+                }
+        }
+        .onChange(of: presentedSheet) { newValue in
+            guard showingAIScanner else { return }
+            if newValue == nil {
+                aiCameraManager.startSession()
+            }
+        }
+    }
+
+    private func toggleAIScanner() {
+        if showingAIScanner {
+            closeAIScanner()
+        } else {
+            aiCameraManager.resetScanState()
+            withAnimation {
+                showingAIScanner = true
+            }
+        }
+    }
+
+    private func closeAIScanner() {
+        aiCameraManager.stopSession()
+        aiCameraManager.resetScanState()
+        withAnimation {
+            showingAIScanner = false
+        }
+    }
+
+    private func presentSaveDraft(_ draft: InventoryDraft) {
+        aiCameraManager.stopSession()
+        presentedSheet = .aiDraft(draft)
+    }
+
+    private func deleteItems(at offsets: IndexSet) {
+        viewModel.items.remove(atOffsets: offsets)
+    }
+
+    @ViewBuilder
+    private var listContent: some View {
+        List {
+            if showingAIScanner {
+                aiScannerSection
+            }
+
+            if viewModel.items.isEmpty {
+                emptyStateSection
+            } else {
+                inventorySection
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var aiScannerSection: some View {
+        Section {
+            InventoryAIScanInlineView(
+                manager: aiCameraManager,
+                onClose: closeAIScanner,
+                onOpenAddSheet: presentSaveDraft
+            )
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 12, leading: 0, bottom: 12, trailing: 0))
+            .listRowSeparator(.hidden)
+        }
+        .listSectionSeparator(.hidden)
+    }
+
+    @ViewBuilder
+    private var emptyStateSection: some View {
+        Section {
+            InventoryEmptyStateView(action: openManualSheet)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+        }
+        .listSectionSeparator(.hidden)
+    }
+
+    @ViewBuilder
+    private var inventorySection: some View {
+        Section {
+            ForEach(viewModel.items) { item in
+                NavigationLink(destination: PartDetailView(itemId: item.id)) {
+                    InventoryRowView(item: item)
                 }
             }
-            .navigationTitle("我的庫存")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    EditButton() // 保留編輯按鈕用於刪除
-                }
+            .onDelete(perform: deleteItems)
                 ToolbarItem(placement: .navigationBarTrailing) {
                      // --- *** 新增 "+" 按鈕 *** ---
                      Menu { // 使用 Menu 提供選項
@@ -74,21 +146,134 @@ struct InventoryView: View {
         }
     }
 
-     func deleteItems(at offsets: IndexSet) {
-         // ... (保持不變) ...
-         viewModel.items.remove(atOffsets: offsets)
-     }
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarLeading) {
+            EditButton()
+        }
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Menu {
+                Button {
+                    openManualSheet()
+                } label: {
+                    Label("手動輸入", systemImage: "pencil.line")
+                }
+
+                Button {
+                    toggleAIScanner()
+                } label: {
+                    Label("AI 掃描輸入", systemImage: "camera.viewfinder")
+                }
+            } label: {
+                Image(systemName: "plus.circle.fill")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sheet(for destination: InventorySheet) -> some View {
+        switch destination {
+        case .manual:
+            ManualAddPartView()
+                .environmentObject(viewModel)
+        case .aiDraft(let draft):
+            SavePartSheetView(
+                name: draft.name,
+                spec: draft.spec,
+                function: draft.function,
+                initialQuantity: draft.quantity
+            ) { name, spec, quantity, function in
+                viewModel.addNewPart(
+                    name: name,
+                    spec: spec,
+                    quantity: quantity,
+                    function: function
+                )
+            }
+        }
+    }
+
+    private func openManualSheet() {
+        if showingAIScanner {
+            closeAIScanner()
+        }
+        presentedSheet = .manual
+    }
 }
 
-// Preview
+private enum InventorySheet: Identifiable, Equatable {
+    case manual
+    case aiDraft(InventoryDraft)
+
+    var id: String {
+        switch self {
+        case .manual:
+            return "manual"
+        case .aiDraft(let draft):
+            return "ai-\(draft.id)"
+        }
+    }
+}
+
+private struct InventoryRowView: View {
+    let item: PartItem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(item.name)
+                .font(.headline)
+            Text("數量：\(item.quantity)")
+                .font(.subheadline)
+            if !item.spec.isEmpty {
+                Text("規格：\(item.spec)")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            }
+            if !item.function.isEmpty && item.function != "N/A" {
+                Text("功能：\(item.function)")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.vertical, 6)
+    }
+}
+
+private struct InventoryEmptyStateView: View {
+    let action: () -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("您的庫存目前是空的")
+                .font(.headline)
+            Text("點擊右上角的新增按鈕可手動輸入，或使用 AI 掃描輔助填寫資料。")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+            Button(action: action) {
+                Label("新增庫存項目", systemImage: "plus")
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
+    }
+}
+
+struct InventoryDraft: Identifiable, Equatable {
+    let id = UUID()
+    var name: String
+    var spec: String
+    var function: String
+    var quantity: Int
+}
+
 struct InventoryView_Previews: PreviewProvider {
     static var previews: some View {
-        // 建立假的 ViewModel
         let previewViewModel = InventoryViewModel()
         previewViewModel.addNewPart(name: "電阻", spec: "1KΩ ±5%", quantity: 10, function: "限流")
         previewViewModel.addNewPart(name: "電晶體", spec: "BC547", quantity: 5, function: "NPN 放大/開關")
 
-        // 預覽需要一個 @State 綁定，我們用 .constant 創建一個假的
         return InventoryView(selectedTab: .constant(.inventory))
             .environmentObject(previewViewModel)
     }

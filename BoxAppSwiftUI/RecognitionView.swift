@@ -29,7 +29,7 @@ struct RecognitionView: View {
                 } else if !manager.isSessionRunning { // <-- 確認無 $
                     Button(action: {
                         manager.startSession()
-                        manager.resultText = "將電子零件放置於下方框內，然後點擊「辨識零件」按鈕。"
+                        manager.resetScanState()
                     }) {
                         Image(systemName: manager.resultText.count > 50 ? "arrow.clockwise.circle.fill" : "camera.fill")
                             .font(.system(size: 60))
@@ -100,8 +100,8 @@ struct RecognitionView: View {
         }
         .ignoresSafeArea(.all, edges: .top)
         .onAppear {
-            // 維持高耗能模式
-             manager.startSession()
+            manager.resetScanState()
+            manager.startSession()
         }
         .onDisappear {
             manager.stopSession()
