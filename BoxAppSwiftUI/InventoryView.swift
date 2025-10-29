@@ -20,7 +20,7 @@ struct InventoryView: View {
                     destinationView(for: destination)
                 }
         }
-        .onChange(of: presentedSheet) { newValue in
+        .onChange(of: presentedSheet, initial: false) { _, newValue in
             guard showingAIScanner else { return }
             if newValue == nil {
                 aiCameraManager.startSession()

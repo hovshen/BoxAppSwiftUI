@@ -30,7 +30,7 @@ struct GeminiAPIConfiguration {
 
     static func makeDefault() throws -> GeminiAPIConfiguration {
         guard
-            let filePath = Bundle.main.path(forResource: "GenerativeAI-Info", ofType: "plist"),
+            let filePath = Bundle.main.path(forResource: "GenerativeAIConfig", ofType: "plist"),
             let plist = NSDictionary(contentsOfFile: filePath),
             let key = plist.object(forKey: "API_KEY") as? String,
             !key.isEmpty

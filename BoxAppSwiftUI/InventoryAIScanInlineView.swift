@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 struct InventoryAIScanInlineView: View {
@@ -79,16 +80,17 @@ struct InventoryAIScanInlineView: View {
         .onDisappear {
             manager.stopSession()
         }
-        .onChange(of: formState.quantityInput) { newValue in
+        .onChange(of: formState.quantityInput, initial: false) { _, newValue in
             formState.updateQuantityText(for: newValue)
         }
-        .onChange(of: formState.quantityText) { newValue in
+        .onChange(of: formState.quantityText, initial: false) { _, newValue in
             formState.updateQuantityInput(for: newValue)
         }
         .onReceive(manager.$resultText.removeDuplicates()) { newValue in
             let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return }
             guard trimmed != CameraManager.defaultResultText else { return }
+            guard trimmed != CameraManager.processingResultText else { return }
 
             let summary = parsePartResult(from: trimmed)
             formState.applyRecognitionResult(summary)
@@ -104,12 +106,14 @@ struct InventoryAIScanInlineView: View {
 
     private var shouldShowRawText: Bool {
         let trimmed = manager.resultText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !trimmed.isEmpty && trimmed != CameraManager.defaultResultText
+        return !trimmed.isEmpty
+            && trimmed != CameraManager.defaultResultText
+            && trimmed != CameraManager.processingResultText
     }
 
     private var header: some View {
         HStack {
-            Label("AI 掃描輸入", systemImage: "sparkles.viewfinder")
+            Label("AI 掃描輸入", systemImage: "wand.and.stars")
                 .font(.headline)
             Spacer()
         }
@@ -153,7 +157,7 @@ struct InventoryAIScanInlineView: View {
             Button {
                 manager.capturePhoto()
             } label: {
-                Label("辨識零件", systemImage: "sparkles.viewfinder")
+                Label("辨識零件", systemImage: "wand.and.stars")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)

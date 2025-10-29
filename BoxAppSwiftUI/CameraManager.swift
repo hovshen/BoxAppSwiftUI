@@ -7,6 +7,7 @@ import Combine
 class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
 
     static let defaultResultText = "將電子零件放置於下方框內，然後點擊「辨識零件」按鈕。"
+    static let processingResultText = "辨識中，請稍候..."
 
     // MARK: - AVFoundation 屬性
     @Published var session = AVCaptureSession()
@@ -132,7 +133,7 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
     func capturePhoto() {
         DispatchQueue.main.async {
             self.isLoading = true
-            self.resultText = "辨識中，請稍候..."
+            self.resultText = CameraManager.processingResultText
             self.errorAlert = nil // 清除舊錯誤
         }
         let settings = AVCapturePhotoSettings()
@@ -264,12 +265,24 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
 }
 
 func parsePartResult(from text: String) -> PartRecognitionSummary? {
-    let normalizedText = text.replacingOccurrences(of: "：", with: ":")
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+
+    let placeholders: Set<String> = [
+        CameraManager.defaultResultText,
+        CameraManager.processingResultText
+    ]
+
+    if placeholders.contains(trimmed) || trimmed.hasPrefix("模擬模式：") {
+        return nil
+    }
+
+    let normalizedText = trimmed.replacingOccurrences(of: "：", with: ":")
 
     guard let rawName = extractField(named: "**零件名稱**:", in: normalizedText),
           !rawName.isEmpty,
           rawName != "N/A" else {
-        print("解析失敗：找不到有效的零件名稱。原始資料：\(text)")
+        print("解析失敗：找不到有效的零件名稱。原始資料：\(trimmed)")
         return nil
     }
 
