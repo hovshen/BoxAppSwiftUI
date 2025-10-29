@@ -4,6 +4,8 @@ struct InventoryView: View {
     @EnvironmentObject var viewModel: InventoryViewModel
     @Binding var selectedTab: Tab // <-- *** 接收 selectedTab 綁定 ***
     @State private var showingAddSheet = false // 控制手動新增表單
+    @State private var showingRecognition = false
+    @StateObject private var recognitionManager = CameraManager()
 
     var body: some View {
         NavigationView {
@@ -44,7 +46,9 @@ struct InventoryView: View {
                              Label("手動輸入", systemImage: "pencil.line")
                          }
                          Button {
-                             selectedTab = .recognition // 切換到辨識分頁
+                             recognitionManager.resultText = "將電子零件放置於下方框內，然後點擊「辨識零件」按鈕。"
+                             recognitionManager.errorAlert = nil
+                             showingRecognition = true
                          } label: {
                              Label("AI 掃描輸入", systemImage: "camera.viewfinder")
                          }
@@ -61,6 +65,12 @@ struct InventoryView: View {
                      .environmentObject(viewModel)
              }
              // --- *** 加入結束 *** ---
+             .fullScreenCover(isPresented: $showingRecognition) {
+                 NavigationStack {
+                     RecognitionView(manager: recognitionManager, showsCloseButton: true)
+                         .environmentObject(viewModel)
+                 }
+             }
         }
     }
 
