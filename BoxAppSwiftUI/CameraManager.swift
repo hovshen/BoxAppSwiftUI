@@ -251,31 +251,34 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
 // 字串解析函式 (保持在 Class 外部)
 // 字串解析函式 (修改後)
 func parsePartResult(from text: String) -> (name: String, spec: String, function: String)? { // <-- 回傳值加入 function
+     // Gemini 有時會回傳全形冒號，先統一轉成半形以利解析
+     let normalizedText = text.replacingOccurrences(of: "：", with: ":")
+
      let namePrefix = "**零件名稱**:"
      let specPrefix = "**規格**:"
      let funcPrefix = "**主要功能**:" // <-- 新增功能的標籤
 
-     guard let nameStart = text.range(of: namePrefix),
-           let specStart = text.range(of: specPrefix),
-           let funcStart = text.range(of: funcPrefix) else { // <-- 確保找到三個標籤
+     guard let nameStart = normalizedText.range(of: namePrefix),
+           let specStart = normalizedText.range(of: specPrefix),
+           let funcStart = normalizedText.range(of: funcPrefix) else { // <-- 確保找到三個標籤
          print("解析失敗：找不到名稱、規格或功能標籤。")
          return nil
      }
 
      // 取出名稱
      let nameRegionStart = nameStart.upperBound
-     let nameRegionEnd = text[nameRegionStart...].firstIndex(of: "\n") ?? specStart.lowerBound // 名稱結束於換行或規格開始前
-     let rawName = String(text[nameRegionStart..<nameRegionEnd]).trimmingCharacters(in: .whitespacesAndNewlines)
+     let nameRegionEnd = normalizedText[nameRegionStart...].firstIndex(of: "\n") ?? specStart.lowerBound // 名稱結束於換行或規格開始前
+     let rawName = String(normalizedText[nameRegionStart..<nameRegionEnd]).trimmingCharacters(in: .whitespacesAndNewlines)
 
      // 取出規格
      let specRegionStart = specStart.upperBound
-     let specRegionEnd = text[specRegionStart...].firstIndex(of: "\n") ?? funcStart.lowerBound // 規格結束於換行或功能開始前
-     let rawSpec = String(text[specRegionStart..<specRegionEnd]).trimmingCharacters(in: .whitespacesAndNewlines)
+     let specRegionEnd = normalizedText[specRegionStart...].firstIndex(of: "\n") ?? funcStart.lowerBound // 規格結束於換行或功能開始前
+     let rawSpec = String(normalizedText[specRegionStart..<specRegionEnd]).trimmingCharacters(in: .whitespacesAndNewlines)
 
      // 取出功能
      let funcRegionStart = funcStart.upperBound
-     let funcRegionEnd = text[funcRegionStart...].firstIndex(of: "\n") ?? text.endIndex // 功能結束於換行或字串結尾
-     let rawFunction = String(text[funcRegionStart..<funcRegionEnd]).trimmingCharacters(in: .whitespacesAndNewlines)
+     let funcRegionEnd = normalizedText[funcRegionStart...].firstIndex(of: "\n") ?? normalizedText.endIndex // 功能結束於換行或字串結尾
+     let rawFunction = String(normalizedText[funcRegionStart..<funcRegionEnd]).trimmingCharacters(in: .whitespacesAndNewlines)
 
      if rawName.isEmpty || rawSpec.isEmpty || rawName == "N/A" {
           print("解析失敗：名稱或規格為空或 N/A。 Name: '\(rawName)', Spec: '\(rawSpec)'")
