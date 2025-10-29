@@ -66,6 +66,7 @@ struct InventoryAIScanInlineView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
+            .disabled(trimmedName.isEmpty)
 
             Button(role: .cancel) {
                 endScanning()

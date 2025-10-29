@@ -4,94 +4,25 @@ struct InventoryView: View {
     @EnvironmentObject var viewModel: InventoryViewModel
     @Binding var selectedTab: Tab
 
-    @State private var showingManualSheet = false
     @State private var showingAIScanner = false
-    @State private var aiDraftForSave: InventoryDraft?
+    @State private var presentedSheet: InventorySheet?
 
     @StateObject private var aiCameraManager = CameraManager()
 
     var body: some View {
         NavigationStack {
-            List {
-                if showingAIScanner {
-                    Section {
-                        InventoryAIScanInlineView(
-                            manager: aiCameraManager,
-                            onClose: closeAIScanner,
-                            onOpenAddSheet: presentSaveDraft
-                        )
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 12, leading: 0, bottom: 12, trailing: 0))
-                        .listRowSeparator(.hidden)
-                    }
-                    .listSectionSeparator(.hidden)
+            listContent
+                .animation(.easeInOut, value: showingAIScanner)
+                .listStyle(.insetGrouped)
+                .navigationTitle("我的庫存")
+                .toolbar { toolbarContent }
+                .sheet(item: $presentedSheet) { destination in
+                    sheet(for: destination)
                 }
-
-                if viewModel.items.isEmpty {
-                    Section {
-                        InventoryEmptyStateView(action: { showingManualSheet = true })
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                    }
-                    .listSectionSeparator(.hidden)
-                } else {
-                    Section {
-                        ForEach(viewModel.items) { item in
-                            NavigationLink(destination: PartDetailView(itemId: item.id)) {
-                                InventoryRowView(item: item)
-                            }
-                        }
-                        .onDelete(perform: deleteItems)
-                    }
-                }
-            }
-            .animation(.easeInOut, value: showingAIScanner)
-            .listStyle(.insetGrouped)
-            .navigationTitle("我的庫存")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    EditButton()
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Menu {
-                        Button {
-                            showingManualSheet = true
-                        } label: {
-                            Label("手動輸入", systemImage: "pencil.line")
-                        }
-
-                        Button {
-                            toggleAIScanner()
-                        } label: {
-                            Label("AI 掃描輸入", systemImage: "camera.viewfinder")
-                        }
-                    } label: {
-                        Image(systemName: "plus.circle.fill")
-                    }
-                }
-            }
-            .sheet(isPresented: $showingManualSheet) {
-                ManualAddPartView()
-                    .environmentObject(viewModel)
-            }
-            .sheet(item: $aiDraftForSave) { draft in
-                SavePartSheetView(
-                    name: draft.name,
-                    spec: draft.spec,
-                    function: draft.function,
-                    initialQuantity: draft.quantity
-                ) { name, spec, quantity, function in
-                    viewModel.addNewPart(
-                        name: name,
-                        spec: spec,
-                        quantity: quantity,
-                        function: function
-                    )
-                }
-            }
         }
-        .onChange(of: aiDraftForSave) { newValue in
-            if newValue == nil && showingAIScanner {
+        .onChange(of: presentedSheet) { newValue in
+            guard showingAIScanner else { return }
+            if newValue == nil {
                 aiCameraManager.startSession()
             }
         }
@@ -118,11 +49,131 @@ struct InventoryView: View {
 
     private func presentSaveDraft(_ draft: InventoryDraft) {
         aiCameraManager.stopSession()
-        aiDraftForSave = draft
+        presentedSheet = .aiDraft(draft)
     }
 
     private func deleteItems(at offsets: IndexSet) {
         viewModel.items.remove(atOffsets: offsets)
+    }
+
+    @ViewBuilder
+    private var listContent: some View {
+        List {
+            if showingAIScanner {
+                aiScannerSection
+            }
+
+            if viewModel.items.isEmpty {
+                emptyStateSection
+            } else {
+                inventorySection
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var aiScannerSection: some View {
+        Section {
+            InventoryAIScanInlineView(
+                manager: aiCameraManager,
+                onClose: closeAIScanner,
+                onOpenAddSheet: presentSaveDraft
+            )
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 12, leading: 0, bottom: 12, trailing: 0))
+            .listRowSeparator(.hidden)
+        }
+        .listSectionSeparator(.hidden)
+    }
+
+    @ViewBuilder
+    private var emptyStateSection: some View {
+        Section {
+            InventoryEmptyStateView(action: openManualSheet)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+        }
+        .listSectionSeparator(.hidden)
+    }
+
+    @ViewBuilder
+    private var inventorySection: some View {
+        Section {
+            ForEach(viewModel.items) { item in
+                NavigationLink(destination: PartDetailView(itemId: item.id)) {
+                    InventoryRowView(item: item)
+                }
+            }
+            .onDelete(perform: deleteItems)
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarLeading) {
+            EditButton()
+        }
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Menu {
+                Button {
+                    openManualSheet()
+                } label: {
+                    Label("手動輸入", systemImage: "pencil.line")
+                }
+
+                Button {
+                    toggleAIScanner()
+                } label: {
+                    Label("AI 掃描輸入", systemImage: "camera.viewfinder")
+                }
+            } label: {
+                Image(systemName: "plus.circle.fill")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sheet(for destination: InventorySheet) -> some View {
+        switch destination {
+        case .manual:
+            ManualAddPartView()
+                .environmentObject(viewModel)
+        case .aiDraft(let draft):
+            SavePartSheetView(
+                name: draft.name,
+                spec: draft.spec,
+                function: draft.function,
+                initialQuantity: draft.quantity
+            ) { name, spec, quantity, function in
+                viewModel.addNewPart(
+                    name: name,
+                    spec: spec,
+                    quantity: quantity,
+                    function: function
+                )
+            }
+        }
+    }
+
+    private func openManualSheet() {
+        if showingAIScanner {
+            closeAIScanner()
+        }
+        presentedSheet = .manual
+    }
+}
+
+private enum InventorySheet: Identifiable, Equatable {
+    case manual
+    case aiDraft(InventoryDraft)
+
+    var id: String {
+        switch self {
+        case .manual:
+            return "manual"
+        case .aiDraft(let draft):
+            return "ai-\(draft.id)"
+        }
     }
 }
 
