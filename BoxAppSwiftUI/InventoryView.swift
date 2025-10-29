@@ -3,16 +3,37 @@ import SwiftUI
 struct InventoryView: View {
     @EnvironmentObject var viewModel: InventoryViewModel
     @Binding var selectedTab: Tab
-    @State private var showingAddSheet = false
-    @State private var showingAISheet = false
+
+    @State private var showingManualSheet = false
+    @State private var showingAIScanner = false
+    @State private var aiDraftForSave: InventoryDraft?
+
     @StateObject private var aiCameraManager = CameraManager()
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
-                if viewModel.items.isEmpty {
-                    InventoryEmptyStateView(action: { showingAddSheet = true })
+                if showingAIScanner {
+                    Section {
+                        InventoryAIScanInlineView(
+                            manager: aiCameraManager,
+                            onClose: closeAIScanner,
+                            onOpenAddSheet: presentSaveDraft
+                        )
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 12, leading: 0, bottom: 12, trailing: 0))
                         .listRowSeparator(.hidden)
+                    }
+                    .listSectionSeparator(.hidden)
+                }
+
+                if viewModel.items.isEmpty {
+                    Section {
+                        InventoryEmptyStateView(action: { showingManualSheet = true })
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                    }
+                    .listSectionSeparator(.hidden)
                 } else {
                     Section {
                         ForEach(viewModel.items) { item in
@@ -24,6 +45,7 @@ struct InventoryView: View {
                     }
                 }
             }
+            .animation(.easeInOut, value: showingAIScanner)
             .listStyle(.insetGrouped)
             .navigationTitle("我的庫存")
             .toolbar {
@@ -33,13 +55,13 @@ struct InventoryView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Button {
-                            showingAddSheet = true
+                            showingManualSheet = true
                         } label: {
                             Label("手動輸入", systemImage: "pencil.line")
                         }
+
                         Button {
-                            aiCameraManager.resetScanState()
-                            showingAISheet = true
+                            toggleAIScanner()
                         } label: {
                             Label("AI 掃描輸入", systemImage: "camera.viewfinder")
                         }
@@ -48,15 +70,55 @@ struct InventoryView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showingAddSheet) {
+            .sheet(isPresented: $showingManualSheet) {
                 ManualAddPartView()
                     .environmentObject(viewModel)
             }
-            .sheet(isPresented: $showingAISheet) {
-                InventoryAIScanSheetView(manager: aiCameraManager)
-                    .environmentObject(viewModel)
+            .sheet(item: $aiDraftForSave) { draft in
+                SavePartSheetView(
+                    name: draft.name,
+                    spec: draft.spec,
+                    function: draft.function,
+                    initialQuantity: draft.quantity
+                ) { name, spec, quantity, function in
+                    viewModel.addNewPart(
+                        name: name,
+                        spec: spec,
+                        quantity: quantity,
+                        function: function
+                    )
+                }
             }
         }
+        .onChange(of: aiDraftForSave) { newValue in
+            if newValue == nil && showingAIScanner {
+                aiCameraManager.startSession()
+            }
+        }
+    }
+
+    private func toggleAIScanner() {
+        if showingAIScanner {
+            closeAIScanner()
+        } else {
+            aiCameraManager.resetScanState()
+            withAnimation {
+                showingAIScanner = true
+            }
+        }
+    }
+
+    private func closeAIScanner() {
+        aiCameraManager.stopSession()
+        aiCameraManager.resetScanState()
+        withAnimation {
+            showingAIScanner = false
+        }
+    }
+
+    private func presentSaveDraft(_ draft: InventoryDraft) {
+        aiCameraManager.stopSession()
+        aiDraftForSave = draft
     }
 
     private func deleteItems(at offsets: IndexSet) {
@@ -107,6 +169,14 @@ private struct InventoryEmptyStateView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)
     }
+}
+
+struct InventoryDraft: Identifiable, Equatable {
+    let id = UUID()
+    var name: String
+    var spec: String
+    var function: String
+    var quantity: Int
 }
 
 struct InventoryView_Previews: PreviewProvider {
