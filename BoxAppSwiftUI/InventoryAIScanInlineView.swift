@@ -1,5 +1,4 @@
 import SwiftUI
-import Combine
 
 struct InventoryAIScanInlineView: View {
     @ObservedObject var manager: CameraManager
@@ -7,16 +6,7 @@ struct InventoryAIScanInlineView: View {
     var onOpenAddSheet: (InventoryDraft) -> Void
 
     @State private var currentZoomFactor: CGFloat = 1.0
-    @State private var nameInput: String = ""
-    @State private var specInput: String = ""
-    @State private var functionInput: String = ""
-    @State private var quantityInput: Int = 1
-    @State private var quantityText: String = "1"
-    @State private var latestParsedSummary: (name: String, spec: String, function: String)? = nil
-
-    private var trimmedName: String { nameInput.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var trimmedSpec: String { specInput.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var trimmedFunction: String { functionInput.trimmingCharacters(in: .whitespacesAndNewlines) }
+    @StateObject private var formState = AIScanFormState()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -39,39 +29,33 @@ struct InventoryAIScanInlineView: View {
                     .font(.subheadline)
                     .foregroundColor(.secondary)
 
-                TextField("零件名稱*", text: $nameInput)
+                TextField("零件名稱*", text: $formState.nameInput)
                     .textFieldStyle(.roundedBorder)
 
-                TextField("規格", text: $specInput)
+                TextField("規格", text: $formState.specInput)
                     .textFieldStyle(.roundedBorder)
 
-                TextField("功能描述", text: $functionInput)
+                TextField("功能描述", text: $formState.functionInput)
                     .textFieldStyle(.roundedBorder)
 
-                Stepper(value: $quantityInput, in: 1...Int.max) {
-                    Text("數量：\(quantityInput)")
+                Stepper(value: $formState.quantityInput, in: 1...Int.max) {
+                    Text("數量：\(formState.quantityInput)")
                         .font(.body)
                 }
 
-                TextField("自訂數量", text: $quantityText)
+                TextField("自訂數量", text: $formState.quantityText)
                     .keyboardType(.numberPad)
                     .textFieldStyle(.roundedBorder)
             }
 
             Button {
-                let draft = InventoryDraft(
-                    name: trimmedName,
-                    spec: trimmedSpec,
-                    function: trimmedFunction,
-                    quantity: quantityInput
-                )
-                onOpenAddSheet(draft)
+                onOpenAddSheet(formState.makeDraft())
             } label: {
                 Label("開啟加入視窗", systemImage: "square.and.pencil")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(trimmedName.isEmpty)
+            .disabled(formState.trimmedName.isEmpty)
 
             Button(role: .cancel) {
                 endScanning()
@@ -89,51 +73,25 @@ struct InventoryAIScanInlineView: View {
                 .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 4)
         )
         .onAppear {
-            resetInputs()
+            resetForm()
             manager.startSession()
         }
         .onDisappear {
             manager.stopSession()
         }
-        .onChange(of: quantityInput) { newValue in
-            let newText = String(newValue)
-            if quantityText != newText {
-                quantityText = newText
-            }
+        .onChange(of: formState.quantityInput) { newValue in
+            formState.updateQuantityText(for: newValue)
         }
-        .onChange(of: quantityText) { newValue in
-            let filtered = newValue.filter { $0.isNumber }
-            if filtered != newValue {
-                quantityText = filtered
-                return
-            }
-
-            guard let value = Int(filtered) else { return }
-            if value <= 0 {
-                quantityText = String(max(1, quantityInput))
-                return
-            }
-            if quantityInput != value {
-                quantityInput = value
-            }
+        .onChange(of: formState.quantityText) { newValue in
+            formState.updateQuantityInput(for: newValue)
         }
         .onReceive(manager.$resultText.removeDuplicates()) { newValue in
             let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return }
             guard trimmed != CameraManager.defaultResultText else { return }
 
-            if let parsed = parsePartResult(from: trimmed) {
-                latestParsedSummary = parsed
-                nameInput = parsed.name
-                if !parsed.spec.isEmpty {
-                    specInput = parsed.spec
-                }
-                if parsed.function != "N/A" {
-                    functionInput = parsed.function
-                }
-            } else {
-                latestParsedSummary = nil
-            }
+            let summary = parsePartResult(from: trimmed)
+            formState.applyRecognitionResult(summary)
         }
         .alert(item: $manager.errorAlert) { alertInfo in
             Alert(
@@ -202,7 +160,7 @@ struct InventoryAIScanInlineView: View {
             .disabled(!manager.isSessionRunning || manager.isLoading)
 
             Button {
-                resetInputs()
+                resetForm()
             } label: {
                 Label("清除", systemImage: "arrow.counterclockwise")
                     .frame(maxWidth: .infinity)
@@ -213,7 +171,7 @@ struct InventoryAIScanInlineView: View {
 
     private var recognitionSummary: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let summary = latestParsedSummary {
+            if let summary = formState.latestSummary {
                 Text("辨識摘要")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
@@ -273,20 +231,15 @@ struct InventoryAIScanInlineView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func resetInputs() {
+    private func resetForm() {
         currentZoomFactor = 1.0
-        nameInput = ""
-        specInput = ""
-        functionInput = ""
-        quantityInput = 1
-        quantityText = "1"
-        latestParsedSummary = nil
+        formState.reset()
         manager.resetScanState()
     }
 
     private func endScanning() {
         manager.stopSession()
-        manager.resetScanState()
+        resetForm()
     }
 }
 
