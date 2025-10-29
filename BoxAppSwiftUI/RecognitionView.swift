@@ -3,8 +3,10 @@ import SwiftUI
 struct RecognitionView: View {
 
     @ObservedObject var manager: CameraManager
+    var showsCloseButton: Bool = false
     @EnvironmentObject var inventoryViewModel: InventoryViewModel
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dismiss) private var dismiss
 
     @State private var currentZoomFactor: CGFloat = 1.0
     @State private var showSaveSheet = false
@@ -87,6 +89,15 @@ struct RecognitionView: View {
 
         } // End of VStack
         .navigationTitle("零件辨識")
+        .toolbar {
+            if showsCloseButton {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("關閉") {
+                        dismiss()
+                    }
+                }
+            }
+        }
         .ignoresSafeArea(.all, edges: .top)
         .onAppear {
             // 維持高耗能模式
