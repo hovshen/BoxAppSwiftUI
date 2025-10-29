@@ -15,16 +15,8 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
     @Published var device: AVCaptureDevice? // 用於縮放
 
     // MARK: - Gemini API 屬性
-    // (讀取 GenerativeAI-Info.plist)
-    private var geminiAPIKey: String {
-        guard let filePath = Bundle.main.path(forResource: "GenerativeAI-Info", ofType: "plist"), //
-              let plist = NSDictionary(contentsOfFile: filePath),
-              let key = plist.object(forKey: "API_KEY") as? String, !key.isEmpty else {
-            fatalError("無法在 GenerativeAI-Info.plist 中找到 'API_KEY'。")
-        }
-        return key
-    }
-    private let geminiURL = URL(string: "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent")!
+    private let apiClient: GeminiAPIClient?
+    private let apiSetupErrorMessage: String?
 
     // MARK: - @Published 狀態 (用於驅動 SwiftUI 更新)
     @Published var isLoading: Bool = false
@@ -37,8 +29,25 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
 
     // MARK: - 初始化
     override init() {
+        let clientResult = Result { try GeminiAPIClient.makeDefault() }
+        switch clientResult {
+        case .success(let client):
+            apiClient = client
+            apiSetupErrorMessage = nil
+        case .failure(let error):
+            apiClient = nil
+            if let geminiError = error as? GeminiAPIError {
+                apiSetupErrorMessage = geminiError.errorDescription
+            } else {
+                apiSetupErrorMessage = error.localizedDescription
+            }
+        }
+
         super.init()
         setupCamera()
+        if let message = apiSetupErrorMessage {
+            errorAlert = ErrorAlert(title: "設定錯誤", message: message)
+        }
     }
 
     // MARK: - 相機設定
@@ -197,70 +206,64 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
 
     // MARK: - Gemini API 呼叫
     private func callGeminiAPI(with base64Image: String) {
-        var request = URLRequest(url: geminiURL)
-        request.httpMethod = "POST"
-        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.addValue(geminiAPIKey, forHTTPHeaderField: "x-goog-api-key")
-        request.addValue(Bundle.main.bundleIdentifier!, forHTTPHeaderField: "X-Ios-Bundle-Identifier")
-
-        let jsonBody: [String: Any] = [ /* ... JSON Body ... */
-            "contents": [
-                [
-                    "parts": [
-                        [ "text": "請辨識這張圖片中的電子零件，並用繁體中文、條列式的方式提供以下資訊，如果某項資訊不適用或無法辨識，請寫'N/A'：\n1. **零件名稱**: \n2. **規格**: (例如：阻值、電容值、型號)\n3. **適用功率**: \n4. **常見用途**: (用於哪種電路或應用)\n5. **主要功能**: " ],
-                        [ "inline_data": [ "mime_type": "image/jpeg", "data": base64Image ] ]
-                    ]
-                ]
-            ]
-        ]
-        let jsonData = try! JSONSerialization.data(withJSONObject: jsonBody)
-        request.httpBody = jsonData
-
-        let task = URLSession.shared.dataTask(with: request) { data, response, error in
+        guard let apiClient else {
             DispatchQueue.main.async {
-                self.isLoading = false // 無論成功失敗，isLoading 都結束
+                self.isLoading = false
+                let message = self.apiSetupErrorMessage ?? "Gemini API 尚未正確初始化。"
+                self.errorAlert = ErrorAlert(title: "設定錯誤", message: message)
             }
+            return
+        }
 
-            if let error = error { /* ... 錯誤處理 ... */
-                DispatchQueue.main.async { self.errorAlert = ErrorAlert(title: "API 請求失敗", message: error.localizedDescription) }
-                return
+        let request: URLRequest
+        do {
+            request = try apiClient.makeRequest(base64Image: base64Image)
+        } catch {
+            DispatchQueue.main.async {
+                self.isLoading = false
+                let message = (error as? GeminiAPIError)?.errorDescription ?? error.localizedDescription
+                self.errorAlert = ErrorAlert(title: "API 請求建立失敗", message: message)
             }
-            guard let data = data else { /* ... 錯誤處理 ... */
-                 DispatchQueue.main.async { self.errorAlert = ErrorAlert(title: "API 錯誤", message: "未收到 API 回應資料。") }
-                return
-            }
+            return
+        }
 
-            do { /* ... JSON 解析 ... */
-                if let jsonResponse = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
-                   let candidates = jsonResponse["candidates"] as? [[String: Any]],
-                   let firstCandidate = candidates.first,
-                   let content = firstCandidate["content"] as? [String: Any],
-                   let parts = content["parts"] as? [[String: Any]],
-                   let firstPart = parts.first,
-                   let text = firstPart["text"] as? String {
-                    DispatchQueue.main.async {
-                        self.resultText = text
-                    }
-                } else if let errorResponse = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
-                          let errorDetails = errorResponse["error"] as? [String: Any],
-                          let errorMessage = errorDetails["message"] as? String {
-                     DispatchQueue.main.async { self.errorAlert = ErrorAlert(title: "Gemini API 錯誤", message: errorMessage) }
-                } else {
-                     DispatchQueue.main.async { self.errorAlert = ErrorAlert(title: "API 回應解析失敗", message: "收到的回應格式不符預期。") }
+        let task = URLSession.shared.dataTask(with: request) { data, _, error in
+            if let error = error {
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                    self.errorAlert = ErrorAlert(title: "API 請求失敗", message: error.localizedDescription)
                 }
-            } catch { /* ... 錯誤處理 ... */
-                 DispatchQueue.main.async { self.errorAlert = ErrorAlert(title: "API 回應解析錯誤", message: error.localizedDescription) }
+                return
+            }
+
+            guard let data = data else {
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                    self.errorAlert = ErrorAlert(title: "API 錯誤", message: "未收到 API 回應資料。")
+                }
+                return
+            }
+
+            do {
+                let text = try apiClient.parseResponse(data: data)
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                    self.resultText = text
+                }
+            } catch {
+                let message = (error as? GeminiAPIError)?.errorDescription ?? error.localizedDescription
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                    self.errorAlert = ErrorAlert(title: "API 回應解析錯誤", message: message)
+                }
             }
         }
         task.resume()
     }
 
-} // <-- Class 結束的 }
+}
 
-
-// 字串解析函式 (保持在 Class 外部)
-// 字串解析函式 (修改後)
-func parsePartResult(from text: String) -> (name: String, spec: String, function: String)? {
+func parsePartResult(from text: String) -> PartRecognitionSummary? {
     let normalizedText = text.replacingOccurrences(of: "：", with: ":")
 
     guard let rawName = extractField(named: "**零件名稱**:", in: normalizedText),
@@ -277,7 +280,7 @@ func parsePartResult(from text: String) -> (name: String, spec: String, function
     let finalFunction = (rawFunction.isEmpty || rawFunction == "N/A") ? "N/A" : rawFunction
 
     print("解析成功：Name: '\(rawName)', Spec: '\(finalSpec)', Function: '\(finalFunction)'")
-    return (rawName, finalSpec, finalFunction)
+    return PartRecognitionSummary(name: rawName, spec: finalSpec, function: finalFunction)
 }
 
 private func extractField(named prefix: String, in text: String) -> String? {
