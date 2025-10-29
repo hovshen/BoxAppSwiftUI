@@ -11,6 +11,7 @@ struct InventoryAIScanInlineView: View {
     @State private var specInput: String = ""
     @State private var functionInput: String = ""
     @State private var quantityInput: Int = 1
+    @State private var quantityText: String = "1"
     @State private var latestParsedSummary: (name: String, spec: String, function: String)? = nil
 
     private var trimmedName: String { nameInput.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -51,6 +52,10 @@ struct InventoryAIScanInlineView: View {
                     Text("數量：\(quantityInput)")
                         .font(.body)
                 }
+
+                TextField("自訂數量", text: $quantityText)
+                    .keyboardType(.numberPad)
+                    .textFieldStyle(.roundedBorder)
             }
 
             Button {
@@ -90,6 +95,28 @@ struct InventoryAIScanInlineView: View {
         .onDisappear {
             manager.stopSession()
         }
+        .onChange(of: quantityInput) { newValue in
+            let newText = String(newValue)
+            if quantityText != newText {
+                quantityText = newText
+            }
+        }
+        .onChange(of: quantityText) { newValue in
+            let filtered = newValue.filter { $0.isNumber }
+            if filtered != newValue {
+                quantityText = filtered
+                return
+            }
+
+            guard let value = Int(filtered) else { return }
+            if value <= 0 {
+                quantityText = String(max(1, quantityInput))
+                return
+            }
+            if quantityInput != value {
+                quantityInput = value
+            }
+        }
         .onReceive(manager.$resultText.removeDuplicates()) { newValue in
             let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return }
@@ -98,8 +125,12 @@ struct InventoryAIScanInlineView: View {
             if let parsed = parsePartResult(from: trimmed) {
                 latestParsedSummary = parsed
                 nameInput = parsed.name
-                specInput = parsed.spec
-                functionInput = parsed.function == "N/A" ? "" : parsed.function
+                if !parsed.spec.isEmpty {
+                    specInput = parsed.spec
+                }
+                if parsed.function != "N/A" {
+                    functionInput = parsed.function
+                }
             } else {
                 latestParsedSummary = nil
             }
@@ -188,7 +219,9 @@ struct InventoryAIScanInlineView: View {
                     .foregroundColor(.secondary)
                 VStack(alignment: .leading, spacing: 6) {
                     summaryRow(title: "名稱", value: summary.name)
-                    summaryRow(title: "規格", value: summary.spec)
+                    if !summary.spec.isEmpty {
+                        summaryRow(title: "規格", value: summary.spec)
+                    }
                     if summary.function != "N/A" {
                         summaryRow(title: "功能", value: summary.function)
                     }
@@ -246,6 +279,7 @@ struct InventoryAIScanInlineView: View {
         specInput = ""
         functionInput = ""
         quantityInput = 1
+        quantityText = "1"
         latestParsedSummary = nil
         manager.resetScanState()
     }

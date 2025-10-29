@@ -15,6 +15,7 @@ struct SavePartSheetView: View {
     @State private var spec: String
     @State private var quantity: Int
     @State private var function: String // <-- 新增狀態
+    @State private var quantityText: String
 
     // 表單驗證
     private var isFormValid: Bool {
@@ -31,7 +32,9 @@ struct SavePartSheetView: View {
          _name = State(initialValue: name)
          _spec = State(initialValue: spec)
          _function = State(initialValue: function)
-         _quantity = State(initialValue: max(1, initialQuantity))
+         let sanitizedQuantity = max(1, initialQuantity)
+         _quantity = State(initialValue: sanitizedQuantity)
+         _quantityText = State(initialValue: String(sanitizedQuantity))
      }
 
 
@@ -45,6 +48,8 @@ struct SavePartSheetView: View {
                 }
                 Section("庫存數量") {
                      Stepper("數量: \(quantity)", value: $quantity, in: 1...Int.max)
+                     TextField("自訂數量", text: $quantityText)
+                        .keyboardType(.numberPad)
                 }
             }
             .navigationTitle("新增庫存項目")
@@ -59,13 +64,35 @@ struct SavePartSheetView: View {
                         onSave(
                             name.trimmingCharacters(in: .whitespaces),
                             spec.trimmingCharacters(in: .whitespaces),
-                            quantity,
+                            max(1, quantity),
                             function.trimmingCharacters(in: .whitespaces).isEmpty ? "N/A" : function.trimmingCharacters(in: .whitespaces)
                         )
                         dismiss()
                     }
                     .disabled(!isFormValid)
                 }
+            }
+        }
+        .onChange(of: quantity) { newValue in
+            let newText = String(max(1, newValue))
+            if quantityText != newText {
+                quantityText = newText
+            }
+        }
+        .onChange(of: quantityText) { newValue in
+            let filtered = newValue.filter { $0.isNumber }
+            if filtered != newValue {
+                quantityText = filtered
+                return
+            }
+
+            guard let value = Int(filtered) else { return }
+            if value <= 0 {
+                quantityText = String(max(1, quantity))
+                return
+            }
+            if quantity != value {
+                quantity = value
             }
         }
     }
