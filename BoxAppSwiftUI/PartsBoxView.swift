@@ -73,7 +73,7 @@ struct PartsBoxView: View {
                 }
                 .pickerStyle(.segmented)
                 // (可選功能): 當切換分類時，自動清空文字框
-                .onChange(of: selectedCategory) {
+                .onChange(of: selectedCategory, initial: false) { _, _ in
                     partToSend = ""
                 }
                 

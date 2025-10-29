@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 struct InventoryAIScanInlineView: View {
@@ -79,10 +80,10 @@ struct InventoryAIScanInlineView: View {
         .onDisappear {
             manager.stopSession()
         }
-        .onChange(of: formState.quantityInput) { newValue in
+        .onChange(of: formState.quantityInput, initial: false) { _, newValue in
             formState.updateQuantityText(for: newValue)
         }
-        .onChange(of: formState.quantityText) { newValue in
+        .onChange(of: formState.quantityText, initial: false) { _, newValue in
             formState.updateQuantityInput(for: newValue)
         }
         .onReceive(manager.$resultText.removeDuplicates()) { newValue in

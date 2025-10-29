@@ -73,13 +73,13 @@ struct SavePartSheetView: View {
                 }
             }
         }
-        .onChange(of: quantity) { newValue in
+        .onChange(of: quantity, initial: false) { _, newValue in
             let newText = String(max(1, newValue))
             if quantityText != newText {
                 quantityText = newText
             }
         }
-        .onChange(of: quantityText) { newValue in
+        .onChange(of: quantityText, initial: false) { _, newValue in
             let filtered = newValue.filter { $0.isNumber }
             if filtered != newValue {
                 quantityText = filtered
