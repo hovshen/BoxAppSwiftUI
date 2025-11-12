@@ -8,7 +8,7 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
 
     static let defaultResultText = "將電子零件放置於下方框內，然後點擊「辨識零件」按鈕。"
     static let processingResultText = "辨識中，請稍候..."
-
+    static let recognitionFailedKeyword = "無法辨識"
     // MARK: - AVFoundation 屬性
     @Published var session = AVCaptureSession()
     private var photoOutput = AVCapturePhotoOutput()
